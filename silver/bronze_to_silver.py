@@ -37,6 +37,7 @@
 import logging
 
 from pyspark.sql import functions as F
+from pyspark.sql import Window
 from pyspark.sql.types import ArrayType, StringType
 
 logger = setup_logging()
@@ -106,7 +107,7 @@ def transform_hackernews(df):
         .withColumn(
             "_rank",
             F.row_number().over(
-                F.Window.partitionBy("id").orderBy(F.col("score").desc(), F.col("_ingested_at").desc())
+                Window.partitionBy("id").orderBy(F.col("score").desc(), F.col("_ingested_at").desc())
             )
         )
         .filter(F.col("_rank") == 1)
@@ -156,7 +157,7 @@ def transform_github(df):
         .withColumn(
             "_rank",
             F.row_number().over(
-                F.Window.partitionBy("full_name").orderBy(F.col("_ingested_at").desc())
+                Window.partitionBy("full_name").orderBy(F.col("_ingested_at").desc())
             )
         )
         .filter(F.col("_rank") == 1)
@@ -211,7 +212,7 @@ def transform_arxiv(df):
         .withColumn(
             "_rank",
             F.row_number().over(
-                F.Window.partitionBy("arxiv_id").orderBy(F.col("_ingested_at").desc())
+                Window.partitionBy("arxiv_id").orderBy(F.col("_ingested_at").desc())
             )
         )
         .filter(F.col("_rank") == 1)
@@ -273,7 +274,7 @@ def transform_stackoverflow(df):
         .withColumn(
             "_rank",
             F.row_number().over(
-                F.Window.partitionBy("question_id").orderBy(F.col("score").desc(), F.col("_ingested_at").desc())
+                Window.partitionBy("question_id").orderBy(F.col("score").desc(), F.col("_ingested_at").desc())
             )
         )
         .filter(F.col("_rank") == 1)
