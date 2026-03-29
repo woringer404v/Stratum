@@ -17,8 +17,11 @@
 
 # COMMAND ----------
 
+# MAGIC %run ../config
+
+# COMMAND ----------
+
 import logging
-from config import TABLE_NAMES, apply_spark_config, setup_logging
 
 logger = setup_logging()
 

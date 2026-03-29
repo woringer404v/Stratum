@@ -1,9 +1,18 @@
-"""
-Stratum — Data Quality Utilities
+# Databricks notebook source
 
-Functions for computing data quality metrics (nulls, duplicates, freshness),
-logging them to a Delta table, and enforcing soft quality gates.
-"""
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC # Stratum — Data Quality Utilities
+# MAGIC
+# MAGIC Functions for computing data quality metrics (nulls, duplicates, freshness),
+# MAGIC logging them to a Delta table, and enforcing soft quality gates.
+# MAGIC
+# MAGIC **Usage:** Other notebooks include this via `%run ../utils/quality_utils`
+# MAGIC
+# MAGIC **Depends on:** `%run ../config` (must be run first by the calling notebook)
+
+# COMMAND ----------
 
 import json
 import logging
@@ -17,14 +26,14 @@ from pyspark.sql.types import (
     DoubleType, BooleanType, TimestampType,
 )
 
-from config import TABLE_NAMES
+# WHY: No import from config — TABLE_NAMES is already in scope because
+# the calling notebook runs %run ../config first.
 
 logger = logging.getLogger("stratum.quality")
 
+# COMMAND ----------
 
-# ---------------------------------------------------------------------------
-# Schema for the Data Quality Log Table
-# ---------------------------------------------------------------------------
+# -- Schema for the Data Quality Log Table --
 DATA_QUALITY_LOG_SCHEMA = StructType([
     StructField("log_id", StringType(), False),
     StructField("source", StringType(), False),
@@ -38,10 +47,9 @@ DATA_QUALITY_LOG_SCHEMA = StructType([
     StructField("checked_at", TimestampType(), False),
 ])
 
+# COMMAND ----------
 
-# ---------------------------------------------------------------------------
-# Individual Quality Checks
-# ---------------------------------------------------------------------------
+# -- Individual Quality Checks --
 def check_nulls(df, columns):
     """Count null values per column.
 
@@ -112,10 +120,9 @@ def check_freshness(df, timestamp_col, max_age_hours=48):
         "is_fresh": is_fresh,
     }
 
+# COMMAND ----------
 
-# ---------------------------------------------------------------------------
-# Unified Quality Metrics
-# ---------------------------------------------------------------------------
+# -- Unified Quality Metrics --
 def compute_quality_metrics(df, source, batch_id, key_columns, required_columns,
                             timestamp_col=None):
     """Run all quality checks and return a unified metrics dict.
@@ -151,10 +158,9 @@ def compute_quality_metrics(df, source, batch_id, key_columns, required_columns,
         "checked_at": datetime.utcnow(),
     }
 
+# COMMAND ----------
 
-# ---------------------------------------------------------------------------
-# Log Quality Metrics to Delta
-# ---------------------------------------------------------------------------
+# -- Log Quality Metrics to Delta --
 def log_quality_to_delta(spark, metrics):
     """Append a quality metrics record to the data quality log Delta table.
 
@@ -197,14 +203,13 @@ def log_quality_to_delta(spark, metrics):
         logger.error("Failed to log quality metrics: %s", exc)
         raise
 
+# COMMAND ----------
 
-# ---------------------------------------------------------------------------
-# Quality Gate
+# -- Quality Gate --
 # WHY: We warn but don't fail so the pipeline can complete and the quality
 # log captures the issue for review. Hard failures on data quality would
 # require manual intervention with no self-healing benefit — the data is
 # already in Bronze and can be reprocessed.
-# ---------------------------------------------------------------------------
 def assert_quality_gate(metrics, max_null_pct=0.10, max_duplicate_pct=0.01):
     """Check if data passes quality thresholds.
 

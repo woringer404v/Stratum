@@ -25,6 +25,18 @@
 
 # COMMAND ----------
 
+# MAGIC %run ../config
+
+# COMMAND ----------
+
+# MAGIC %run ../utils/api_utils
+
+# COMMAND ----------
+
+# MAGIC %run ../utils/delta_utils
+
+# COMMAND ----------
+
 import json
 import logging
 from datetime import datetime
@@ -33,13 +45,6 @@ from pyspark.sql import functions as F
 from pyspark.sql.types import (
     StructType, StructField, StringType, BooleanType, TimestampType,
 )
-
-from config import (
-    TABLE_NAMES, LLM_CONFIG, LLM_CATEGORIES, apply_spark_config,
-    setup_logging, get_secret,
-)
-from utils.api_utils import post_with_retry
-from utils.delta_utils import create_all_databases, upsert_to_table, optimize_table
 
 logger = setup_logging()
 

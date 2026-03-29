@@ -22,17 +22,22 @@
 
 # COMMAND ----------
 
+# MAGIC %run ../config
+
+# COMMAND ----------
+
+# MAGIC %run ../utils/delta_utils
+
+# COMMAND ----------
+
+# MAGIC %run ../utils/quality_utils
+
+# COMMAND ----------
+
 import logging
 
 from pyspark.sql import functions as F
 from pyspark.sql.types import ArrayType, StringType
-
-from config import TABLE_NAMES, DATABASE_NAMES, apply_spark_config, setup_logging
-from utils.delta_utils import (
-    create_all_databases, upsert_to_table, generate_batch_id,
-    get_checkpoint, save_checkpoint,
-)
-from utils.quality_utils import compute_quality_metrics, log_quality_to_delta
 
 logger = setup_logging()
 

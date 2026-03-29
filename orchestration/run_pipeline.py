@@ -22,11 +22,13 @@
 
 # COMMAND ----------
 
+# MAGIC %run ../config
+
+# COMMAND ----------
+
 import time
 import logging
 from datetime import datetime
-
-from config import TABLE_NAMES, DATABASE_NAMES, apply_spark_config, setup_logging
 
 logger = setup_logging()
 

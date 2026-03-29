@@ -21,6 +21,22 @@
 
 # COMMAND ----------
 
+# MAGIC %run ../config
+
+# COMMAND ----------
+
+# MAGIC %run ../utils/api_utils
+
+# COMMAND ----------
+
+# MAGIC %run ../utils/delta_utils
+
+# COMMAND ----------
+
+# MAGIC %run ../utils/quality_utils
+
+# COMMAND ----------
+
 import json
 import logging
 from datetime import datetime, timedelta
@@ -28,16 +44,6 @@ from datetime import datetime, timedelta
 from pyspark.sql.types import (
     StructType, StructField, LongType, StringType, IntegerType, DoubleType,
 )
-
-from config import (
-    TABLE_NAMES, GITHUB_SEARCH_TOPICS, apply_spark_config, setup_logging,
-)
-from utils.api_utils import paginate_github
-from utils.delta_utils import (
-    create_all_databases, create_delta_table, write_bronze,
-    get_checkpoint, save_checkpoint, generate_batch_id,
-)
-from utils.quality_utils import compute_quality_metrics, log_quality_to_delta
 
 logger = setup_logging()
 

@@ -1,20 +1,25 @@
-"""
-Stratum — Central Configuration Module
+# Databricks notebook source
 
-Single source of truth for all configuration: API endpoints, database/table names,
-Delta Lake properties, retry settings, and secret management.
+# COMMAND ----------
 
-This is a plain Python module (not a notebook) imported by all notebooks.
-"""
+# MAGIC %md
+# MAGIC # Stratum — Central Configuration
+# MAGIC
+# MAGIC Single source of truth for all configuration: API endpoints, database/table names,
+# MAGIC Delta Lake properties, retry settings, and secret management.
+# MAGIC
+# MAGIC **Usage:** Other notebooks include this via `%run ../config`
+
+# COMMAND ----------
 
 import os
 import logging
 
 logger = logging.getLogger("stratum")
 
-# ---------------------------------------------------------------------------
-# API Endpoints
-# ---------------------------------------------------------------------------
+# COMMAND ----------
+
+# -- API Endpoints --
 API_ENDPOINTS = {
     "hackernews": "https://hacker-news.firebaseio.com/v0",
     "github": "https://api.github.com",
@@ -22,18 +27,18 @@ API_ENDPOINTS = {
     "stackoverflow": "https://api.stackexchange.com/2.3",
 }
 
-# ---------------------------------------------------------------------------
-# Database Names (Hive metastore — no Unity Catalog on Community Edition)
-# ---------------------------------------------------------------------------
+# COMMAND ----------
+
+# -- Database Names (Hive metastore — no Unity Catalog on Community Edition) --
 DATABASE_NAMES = {
     "bronze": "stratum_bronze",
     "silver": "stratum_silver",
     "gold": "stratum_gold",
 }
 
-# ---------------------------------------------------------------------------
-# Table Names — fully qualified as database.table
-# ---------------------------------------------------------------------------
+# COMMAND ----------
+
+# -- Table Names — fully qualified as database.table --
 TABLE_NAMES = {
     # Bronze
     "hackernews_raw": f"{DATABASE_NAMES['bronze']}.hackernews_raw",
@@ -52,27 +57,27 @@ TABLE_NAMES = {
     "llm_enriched": f"{DATABASE_NAMES['gold']}.llm_enriched",
 }
 
-# ---------------------------------------------------------------------------
-# Delta Lake Table Properties
+# COMMAND ----------
+
+# -- Delta Lake Table Properties --
 # WHY: autoOptimize prevents the small-file problem that arises from frequent
 # appends on Community Edition where there is no scheduled OPTIMIZE job.
-# ---------------------------------------------------------------------------
 DELTA_PROPERTIES = {
     "delta.autoOptimize.optimizeWrite": "true",
     "delta.autoOptimize.autoCompact": "true",
 }
 
-# ---------------------------------------------------------------------------
-# Spark Configuration
+# COMMAND ----------
+
+# -- Spark Configuration --
 # WHY: Community Edition runs on a single node with limited cores. The default
 # 200 shuffle partitions creates excessive small files and overhead. 8 is
 # appropriate for our data volumes (thousands of rows, not millions).
-# ---------------------------------------------------------------------------
 SHUFFLE_PARTITIONS = 8
 
-# ---------------------------------------------------------------------------
-# Retry Configuration for API Calls
-# ---------------------------------------------------------------------------
+# COMMAND ----------
+
+# -- Retry Configuration for API Calls --
 RETRY_CONFIG = {
     "max_retries": 3,
     "backoff_base": 2,
@@ -80,9 +85,9 @@ RETRY_CONFIG = {
     "timeout": 30,
 }
 
-# ---------------------------------------------------------------------------
-# LLM Enrichment Configuration
-# ---------------------------------------------------------------------------
+# COMMAND ----------
+
+# -- LLM Enrichment Configuration --
 LLM_CONFIG = {
     "model": "gpt-3.5-turbo",
     "batch_size": 20,
@@ -103,11 +108,11 @@ LLM_CATEGORIES = [
     "Other",
 ]
 
-# ---------------------------------------------------------------------------
-# GitHub Search Queries
+# COMMAND ----------
+
+# -- GitHub Search Queries --
 # WHY: GitHub has no trending endpoint. We use the search API with
 # created:>DATE sort:stars to find recently-created repos gaining traction.
-# ---------------------------------------------------------------------------
 GITHUB_SEARCH_TOPICS = [
     "machine learning",
     "data engineering",
@@ -117,9 +122,7 @@ GITHUB_SEARCH_TOPICS = [
     "spark",
 ]
 
-# ---------------------------------------------------------------------------
-# Stack Overflow Tags to Track
-# ---------------------------------------------------------------------------
+# -- Stack Overflow Tags to Track --
 STACKOVERFLOW_TAGS = [
     "python",
     "apache-spark",
@@ -131,19 +134,16 @@ STACKOVERFLOW_TAGS = [
     "pytorch",
 ]
 
-# ---------------------------------------------------------------------------
-# arXiv Categories
-# ---------------------------------------------------------------------------
+# -- arXiv Categories --
 ARXIV_CATEGORIES = [
     "cs.AI",
     "cs.LG",
     "cs.CL",
 ]
 
+# COMMAND ----------
 
-# ---------------------------------------------------------------------------
-# Secret Management
-# ---------------------------------------------------------------------------
+# -- Secret Management --
 def get_secret(key):
     """Retrieve a secret, trying Databricks secrets first then environment variables.
 
@@ -160,7 +160,6 @@ def get_secret(key):
     # be available in local/CI testing. The fallback to os.environ keeps the
     # code portable without compromising security on Databricks.
     try:
-        # dbutils is injected by the Databricks runtime — not importable directly
         return dbutils.secrets.get(scope="stratum", key=key)  # noqa: F821
     except Exception:
         value = os.environ.get(key)
@@ -171,6 +170,7 @@ def get_secret(key):
             )
         return value
 
+# COMMAND ----------
 
 def apply_spark_config(spark):
     """Apply standard Spark configuration to the active session.
@@ -189,6 +189,7 @@ def apply_spark_config(spark):
         SHUFFLE_PARTITIONS,
     )
 
+# COMMAND ----------
 
 def setup_logging(level=logging.INFO):
     """Configure the stratum logger with a consistent format.

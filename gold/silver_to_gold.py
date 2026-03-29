@@ -20,17 +20,20 @@
 
 # COMMAND ----------
 
+# MAGIC %run ../config
+
+# COMMAND ----------
+
+# MAGIC %run ../utils/delta_utils
+
+# COMMAND ----------
+
 import logging
 from datetime import datetime, timedelta
 
 from pyspark.sql import functions as F
 from pyspark.sql import Window
 from pyspark.sql.types import ArrayType, StringType
-
-from config import TABLE_NAMES, apply_spark_config, setup_logging
-from utils.delta_utils import (
-    create_all_databases, upsert_to_table, optimize_table,
-)
 
 logger = setup_logging()
 

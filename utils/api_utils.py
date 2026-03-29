@@ -1,9 +1,18 @@
-"""
-Stratum — API Utilities
+# Databricks notebook source
 
-Reusable HTTP client layer with retry logic, rate-limit awareness, pagination
-helpers, and XML parsing for all four data sources.
-"""
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC # Stratum — API Utilities
+# MAGIC
+# MAGIC Reusable HTTP client layer with retry logic, rate-limit awareness, pagination
+# MAGIC helpers, and XML parsing for all four data sources.
+# MAGIC
+# MAGIC **Usage:** Other notebooks include this via `%run ../utils/api_utils`
+# MAGIC
+# MAGIC **Depends on:** `%run ../config` (must be run first by the calling notebook)
+
+# COMMAND ----------
 
 import json
 import time
@@ -12,14 +21,14 @@ import xml.etree.ElementTree as ET
 
 import requests
 
-from config import RETRY_CONFIG, API_ENDPOINTS
+# WHY: No import from config — variables (RETRY_CONFIG, API_ENDPOINTS) are
+# already in scope because the calling notebook runs %run ../config first.
 
 logger = logging.getLogger("stratum.api")
 
+# COMMAND ----------
 
-# ---------------------------------------------------------------------------
-# Core HTTP — GET with Retry
-# ---------------------------------------------------------------------------
+# -- Core HTTP — GET with Retry --
 def fetch_with_retry(url, params=None, headers=None, max_retries=None,
                      backoff_base=None, timeout=None):
     """Make an HTTP GET request with exponential backoff retry.
@@ -85,6 +94,7 @@ def fetch_with_retry(url, params=None, headers=None, max_retries=None,
         f"(last status: {response.status_code})"
     )
 
+# COMMAND ----------
 
 def post_with_retry(url, json_body, headers=None, max_retries=None,
                     backoff_base=None, timeout=None):
@@ -151,6 +161,7 @@ def post_with_retry(url, json_body, headers=None, max_retries=None,
         f"(last status: {response.status_code})"
     )
 
+# COMMAND ----------
 
 def _get_wait_time(response, attempt, backoff_base):
     """Calculate wait time respecting Retry-After header if present.
@@ -171,10 +182,9 @@ def _get_wait_time(response, attempt, backoff_base):
             pass
     return min(backoff_base ** attempt, RETRY_CONFIG["backoff_max"])
 
+# COMMAND ----------
 
-# ---------------------------------------------------------------------------
-# Convenience Wrappers
-# ---------------------------------------------------------------------------
+# -- Convenience Wrappers --
 def fetch_json(url, params=None, headers=None):
     """Fetch a URL and return parsed JSON.
 
@@ -209,13 +219,12 @@ def fetch_xml(url, params=None):
     response = fetch_with_retry(url, params=params)
     return ET.fromstring(response.content)
 
+# COMMAND ----------
 
-# ---------------------------------------------------------------------------
-# GitHub Pagination
+# -- GitHub Pagination --
 # WHY: GitHub has no trending endpoint. We query the search API with
 # created:>DATE sort:stars to find recently-created repos gaining traction.
 # Rate limit for unauthenticated search: 10 req/min — we sleep between pages.
-# ---------------------------------------------------------------------------
 def paginate_github(query, max_pages=3, per_page=30):
     """Fetch multiple pages of GitHub repository search results.
 
@@ -265,12 +274,11 @@ def paginate_github(query, max_pages=3, per_page=30):
 
     return all_items
 
+# COMMAND ----------
 
-# ---------------------------------------------------------------------------
-# Stack Overflow Pagination
+# -- Stack Overflow Pagination --
 # WHY: SO API returns compressed responses and has a 300 req/day quota for
 # unauthenticated callers. We monitor quota_remaining and stop early.
-# ---------------------------------------------------------------------------
 def paginate_stackoverflow(tagged, max_pages=3, pagesize=100):
     """Fetch multiple pages of Stack Overflow questions for a given tag.
 
@@ -330,12 +338,11 @@ def paginate_stackoverflow(tagged, max_pages=3, pagesize=100):
 
     return all_items
 
+# COMMAND ----------
 
-# ---------------------------------------------------------------------------
-# arXiv Pagination
+# -- arXiv Pagination --
 # WHY: arXiv uses offset-based pagination with XML/Atom responses.
 # Rate limit is ~3 seconds between requests — enforced with sleep.
-# ---------------------------------------------------------------------------
 ARXIV_ATOM_NS = {
     "atom": "http://www.w3.org/2005/Atom",
     "arxiv": "http://arxiv.org/schemas/atom",
@@ -399,6 +406,7 @@ def _parse_arxiv_entry(entry):
         "link": link,
     }
 
+# COMMAND ----------
 
 def paginate_arxiv(search_query, max_results=200, batch_size=50):
     """Fetch arXiv results in batches via offset pagination.

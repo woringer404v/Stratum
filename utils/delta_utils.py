@@ -1,9 +1,18 @@
-"""
-Stratum — Delta Lake Utilities
+# Databricks notebook source
 
-Reusable helpers for Delta Lake operations: database/table creation, bronze append,
-MERGE upsert, OPTIMIZE, and checkpoint management for the simulated Auto Loader pattern.
-"""
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC # Stratum — Delta Lake Utilities
+# MAGIC
+# MAGIC Reusable helpers for Delta Lake operations: database/table creation, bronze append,
+# MAGIC MERGE upsert, OPTIMIZE, and checkpoint management for the simulated Auto Loader pattern.
+# MAGIC
+# MAGIC **Usage:** Other notebooks include this via `%run ../utils/delta_utils`
+# MAGIC
+# MAGIC **Depends on:** `%run ../config` (must be run first by the calling notebook)
+
+# COMMAND ----------
 
 import logging
 import uuid
@@ -14,14 +23,14 @@ from pyspark.sql import functions as F
 from pyspark.sql.types import StructType, StructField, StringType, TimestampType
 from delta.tables import DeltaTable
 
-from config import DATABASE_NAMES, TABLE_NAMES, DELTA_PROPERTIES
+# WHY: No import from config — variables (DATABASE_NAMES, TABLE_NAMES, DELTA_PROPERTIES)
+# are already in scope because the calling notebook runs %run ../config first.
 
 logger = logging.getLogger("stratum.delta")
 
+# COMMAND ----------
 
-# ---------------------------------------------------------------------------
-# Database & Table Creation
-# ---------------------------------------------------------------------------
+# -- Database & Table Creation --
 def create_database_if_not_exists(spark, db_name):
     """Create a Hive metastore database if it does not already exist.
 
@@ -42,6 +51,7 @@ def create_all_databases(spark):
     for db_name in DATABASE_NAMES.values():
         create_database_if_not_exists(spark, db_name)
 
+# COMMAND ----------
 
 def create_delta_table(spark, table_name, schema, partition_cols=None, properties=None):
     """Create a managed Delta table if it does not already exist.
@@ -97,12 +107,11 @@ def _table_exists(spark, table_name):
     tables = [t.name for t in spark.catalog.listTables(db)]
     return table in tables
 
+# COMMAND ----------
 
-# ---------------------------------------------------------------------------
-# Bronze Write — Append Only
+# -- Bronze Write — Append Only --
 # WHY: Bronze is an immutable audit log of exactly what the APIs returned.
 # Append-only preserves this property. Deduplication is Silver's job.
-# ---------------------------------------------------------------------------
 def write_bronze(spark, df, table_name, batch_id, source_name):
     """Append a DataFrame to a bronze Delta table with ingestion metadata.
 
@@ -144,12 +153,11 @@ def write_bronze(spark, df, table_name, batch_id, source_name):
         logger.error("Failed to write to %s: %s", table_name, exc)
         raise
 
+# COMMAND ----------
 
-# ---------------------------------------------------------------------------
-# MERGE Upsert — for Silver and Gold
+# -- MERGE Upsert — for Silver and Gold --
 # WHY: MERGE guarantees idempotency — re-running a batch won't create
 # duplicates. This is essential for a resumable pipeline.
-# ---------------------------------------------------------------------------
 def upsert_to_table(spark, source_df, target_table, merge_keys, update_columns=None):
     """MERGE source DataFrame into target Delta table.
 
@@ -219,10 +227,9 @@ def upsert_to_table(spark, source_df, target_table, merge_keys, update_columns=N
         logger.error("Failed to upsert into %s: %s", target_table, exc)
         raise
 
+# COMMAND ----------
 
-# ---------------------------------------------------------------------------
-# OPTIMIZE + ZORDER
-# ---------------------------------------------------------------------------
+# -- OPTIMIZE + ZORDER --
 def optimize_table(spark, table_name, zorder_cols=None):
     """Run OPTIMIZE on a Delta table, optionally with ZORDER BY.
 
@@ -243,15 +250,14 @@ def optimize_table(spark, table_name, zorder_cols=None):
         logger.error("Failed to optimize %s: %s", table_name, exc)
         raise
 
+# COMMAND ----------
 
-# ---------------------------------------------------------------------------
-# Checkpoint Management — Simulated Auto Loader
+# -- Checkpoint Management — Simulated Auto Loader --
 # WHY: Community Edition has no Auto Loader (no structured streaming with
 # cloudFiles). We simulate the three key guarantees — incremental processing,
 # exactly-once semantics, and checkpoint recovery — using a Delta table.
 # A Delta table (vs filesystem marker) supports atomic MERGE, is queryable
 # for debugging, and lives in the same metastore as all other tables.
-# ---------------------------------------------------------------------------
 CHECKPOINT_SCHEMA = StructType([
     StructField("source", StringType(), False),
     StructField("last_id", StringType(), True),
@@ -270,6 +276,7 @@ def _ensure_checkpoint_table(spark):
     create_database_if_not_exists(spark, DATABASE_NAMES["bronze"])
     create_delta_table(spark, TABLE_NAMES["checkpoints"], CHECKPOINT_SCHEMA)
 
+# COMMAND ----------
 
 def get_checkpoint(spark, source):
     """Read the last checkpoint for a data source.
@@ -334,10 +341,9 @@ def save_checkpoint(spark, source, last_id=None, last_timestamp=None, batch_id=N
         source, last_id, last_timestamp, batch_id,
     )
 
+# COMMAND ----------
 
-# ---------------------------------------------------------------------------
-# Batch ID Generation
-# ---------------------------------------------------------------------------
+# -- Batch ID Generation --
 def generate_batch_id(source):
     """Generate a unique batch identifier.
 
