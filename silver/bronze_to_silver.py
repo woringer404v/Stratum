@@ -259,16 +259,14 @@ def transform_stackoverflow(df):
         )
         .withColumn("url", F.col("link"))
         .withColumn(
-            "tags",
+            "_parsed_tags",
             F.coalesce(F.from_json(F.col("tags"), ArrayType(StringType())), F.array()),
         )
         .withColumn(
             "language",
-            F.coalesce(
-                F.from_json(F.col("tags"), ArrayType(StringType())).getItem(0),
-                F.lit(None).cast("string"),
-            )
+            F.col("_parsed_tags").getItem(0),
         )
+        .withColumn("tags", F.col("_parsed_tags"))
         .withColumn("_silver_processed_at", F.current_timestamp())
         # Dedup: keep highest score per question
         .withColumn(
