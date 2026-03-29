@@ -178,17 +178,22 @@ source_clause = "" if SOURCE_FILTER == "all" else f"AND source = '{SOURCE_FILTER
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC SELECT
-# MAGIC   e.category,
-# MAGIC   COUNT(*) AS emerging_count,
-# MAGIC   COLLECT_LIST(s.title) AS sample_titles
-# MAGIC FROM stratum_gold.llm_enriched e
-# MAGIC JOIN stratum_silver.tech_signals s ON e.signal_id = s.signal_id
-# MAGIC WHERE e.is_emerging = true
-# MAGIC   AND e.enriched_at >= date_sub(current_date(), 7)
-# MAGIC GROUP BY e.category
-# MAGIC ORDER BY emerging_count DESC
+# WHY: llm_enriched may not exist if LLM enrichment was skipped.
+try:
+    spark.sql("""
+        SELECT
+          e.category,
+          COUNT(*) AS emerging_count,
+          COLLECT_LIST(s.title) AS sample_titles
+        FROM stratum_gold.llm_enriched e
+        JOIN stratum_silver.tech_signals s ON e.signal_id = s.signal_id
+        WHERE e.is_emerging = true
+          AND e.enriched_at >= date_sub(current_date(), 7)
+        GROUP BY e.category
+        ORDER BY emerging_count DESC
+    """).display()
+except Exception:
+    print("Query 7 skipped — llm_enriched table does not exist (run LLM enrichment first)")
 
 # COMMAND ----------
 
@@ -199,17 +204,21 @@ source_clause = "" if SOURCE_FILTER == "all" else f"AND source = '{SOURCE_FILTER
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC SELECT
-# MAGIC   s.source,
-# MAGIC   e.sentiment,
-# MAGIC   COUNT(*) AS signal_count,
-# MAGIC   ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (PARTITION BY s.source), 1) AS pct
-# MAGIC FROM stratum_gold.llm_enriched e
-# MAGIC JOIN stratum_silver.tech_signals s ON e.signal_id = s.signal_id
-# MAGIC WHERE e.category != 'error'
-# MAGIC GROUP BY s.source, e.sentiment
-# MAGIC ORDER BY s.source, signal_count DESC
+try:
+    spark.sql("""
+        SELECT
+          s.source,
+          e.sentiment,
+          COUNT(*) AS signal_count,
+          ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (PARTITION BY s.source), 1) AS pct
+        FROM stratum_gold.llm_enriched e
+        JOIN stratum_silver.tech_signals s ON e.signal_id = s.signal_id
+        WHERE e.category != 'error'
+        GROUP BY s.source, e.sentiment
+        ORDER BY s.source, signal_count DESC
+    """).display()
+except Exception:
+    print("Query 8 skipped — llm_enriched table does not exist (run LLM enrichment first)")
 
 # COMMAND ----------
 
@@ -314,12 +323,15 @@ else:
 
 # COMMAND ----------
 
-# Query the table as it was 1 hour ago (or earliest available)
-spark.sql("""
-    SELECT *
-    FROM stratum_gold.source_summary
-    TIMESTAMP AS OF date_sub(current_timestamp(), 1)
-""").display()
+# Query the table as it was 1 day ago (or earliest available)
+try:
+    spark.sql("""
+        SELECT *
+        FROM stratum_gold.source_summary
+        TIMESTAMP AS OF date_sub(current_timestamp(), 1)
+    """).display()
+except Exception as e:
+    print(f"Time travel query skipped — table may not have history that far back: {e}")
 
 # COMMAND ----------
 

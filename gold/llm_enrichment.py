@@ -242,7 +242,14 @@ def call_llm_batch(rows, api_key, model):
 # making the notebook idempotent and resumable.
 silver_df = spark.table(TABLE_NAMES["tech_signals"])
 
-try:
+# WHY: Check if llm_enriched table exists before attempting LEFT ANTI JOIN.
+# On first run the table doesn't exist. We check explicitly rather than
+# relying on try/except because Spark Connect raises errors lazily at .count().
+llm_table_exists = TABLE_NAMES["llm_enriched"].split(".")[1] in [
+    t.name for t in spark.catalog.listTables(TABLE_NAMES["llm_enriched"].split(".")[0])
+]
+
+if llm_table_exists:
     enriched_df = spark.table(TABLE_NAMES["llm_enriched"])
     candidates = (
         silver_df.alias("s")
@@ -251,7 +258,7 @@ try:
         .limit(MAX_SIGNALS)
         .select("s.signal_id", "s.title", "s.body", "s.source", "s.tags")
     )
-except Exception:
+else:
     # Table doesn't exist yet — all signals are candidates
     candidates = (
         silver_df
