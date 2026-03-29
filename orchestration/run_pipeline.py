@@ -37,19 +37,78 @@ logger = setup_logging()
 # -- Widget definitions --
 dbutils.widgets.dropdown("run_mode", "incremental", ["incremental", "full"], "Run mode")
 dbutils.widgets.dropdown("skip_llm", "false", ["true", "false"], "Skip LLM enrichment")
+dbutils.widgets.dropdown("llm_provider", LLM_CONFIG["provider"], list(LLM_PROVIDERS.keys()), "LLM provider")
+dbutils.widgets.text("llm_api_key", "", "LLM API key (paste here)")
 dbutils.widgets.text("batch_size", "200", "HN batch size")
 dbutils.widgets.text("max_signals", "50", "Max signals for LLM enrichment")
 
 RUN_MODE = dbutils.widgets.get("run_mode")
 SKIP_LLM = dbutils.widgets.get("skip_llm") == "true"
+LLM_PROVIDER = dbutils.widgets.get("llm_provider")
+LLM_API_KEY = dbutils.widgets.get("llm_api_key").strip()
 BATCH_SIZE = dbutils.widgets.get("batch_size")
 MAX_SIGNALS = dbutils.widgets.get("max_signals")
 
-logger.info("Pipeline starting — run_mode=%s, skip_llm=%s", RUN_MODE, SKIP_LLM)
+logger.info("Pipeline starting — run_mode=%s, skip_llm=%s, llm_provider=%s", RUN_MODE, SKIP_LLM, LLM_PROVIDER)
 
 # COMMAND ----------
 
 apply_spark_config(spark)
+
+# COMMAND ----------
+
+# -- Set and validate LLM API key --
+# WHY: dbutils.notebook.run() creates a new Python process. Environment
+# variables set in this notebook don't carry over. We use Spark config
+# as a transport mechanism — it persists across notebook.run() calls.
+import os, requests
+
+if not SKIP_LLM:
+    if not LLM_API_KEY:
+        logger.warning("No LLM API key provided — setting skip_llm=true")
+        SKIP_LLM = True
+    else:
+        # Store key in env var AND Spark conf so child notebooks can access it
+        provider_cfg = LLM_PROVIDERS[LLM_PROVIDER]
+        env_key = provider_cfg["env_key"]
+        os.environ[env_key] = LLM_API_KEY
+        spark.conf.set(f"stratum.secret.{env_key}", LLM_API_KEY)
+
+        # Quick validation — send a tiny test request
+        logger.info("Validating %s API key...", LLM_PROVIDER)
+        try:
+            if LLM_PROVIDER == "openai":
+                r = requests.post(
+                    provider_cfg["url"],
+                    headers=provider_cfg["auth_header"](LLM_API_KEY),
+                    json={"model": provider_cfg["model"], "messages": [{"role": "user", "content": "hi"}], "max_tokens": 5},
+                    timeout=15,
+                )
+            elif LLM_PROVIDER == "anthropic":
+                r = requests.post(
+                    provider_cfg["url"],
+                    headers=provider_cfg["auth_header"](LLM_API_KEY),
+                    json={"model": provider_cfg["model"], "messages": [{"role": "user", "content": "hi"}], "max_tokens": 5},
+                    timeout=15,
+                )
+            elif LLM_PROVIDER == "gemini":
+                url = provider_cfg["url"].replace("{model}", provider_cfg["model"]) + f"?key={LLM_API_KEY}"
+                r = requests.post(
+                    url,
+                    headers=provider_cfg["auth_header"](LLM_API_KEY),
+                    json={"contents": [{"parts": [{"text": "hi"}]}], "generationConfig": {"maxOutputTokens": 5}},
+                    timeout=15,
+                )
+
+            if r.status_code == 200:
+                logger.info("API key validated — %s is working", LLM_PROVIDER)
+            else:
+                logger.error("API key validation FAILED — %s returned %d: %s", LLM_PROVIDER, r.status_code, r.text[:200])
+                SKIP_LLM = True
+                logger.warning("Disabling LLM enrichment due to invalid API key")
+        except Exception as exc:
+            logger.error("API key validation error: %s", exc)
+            SKIP_LLM = True
 
 # COMMAND ----------
 
@@ -130,7 +189,7 @@ PIPELINE_STEPS = [
         "name": "LLM Enrichment",
         "path": "../gold/llm_enrichment",
         "timeout": 1800,
-        "params": {"max_signals": MAX_SIGNALS},
+        "params": {"max_signals": MAX_SIGNALS, "provider": LLM_PROVIDER},
         "critical": False,
         "skip_condition": SKIP_LLM,
     },

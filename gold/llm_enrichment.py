@@ -53,15 +53,17 @@ logger = setup_logging()
 # -- Widget definitions --
 dbutils.widgets.text("batch_size", str(LLM_CONFIG["batch_size"]), "Signals per LLM batch")
 dbutils.widgets.text("max_signals", "200", "Max signals to enrich per run")
-dbutils.widgets.text("model", LLM_CONFIG["model"], "OpenAI model to use")
+dbutils.widgets.dropdown("provider", LLM_CONFIG["provider"], list(LLM_PROVIDERS.keys()), "LLM provider")
 
 BATCH_SIZE = int(dbutils.widgets.get("batch_size"))
 MAX_SIGNALS = int(dbutils.widgets.get("max_signals"))
-MODEL = dbutils.widgets.get("model")
+PROVIDER = dbutils.widgets.get("provider")
+PROVIDER_CONFIG = LLM_PROVIDERS[PROVIDER]
+MODEL = PROVIDER_CONFIG["model"]
 
 logger.info(
-    "LLM enrichment — batch_size=%d, max_signals=%d, model=%s",
-    BATCH_SIZE, MAX_SIGNALS, MODEL,
+    "LLM enrichment — batch_size=%d, max_signals=%d, provider=%s, model=%s",
+    BATCH_SIZE, MAX_SIGNALS, PROVIDER, MODEL,
 )
 
 # COMMAND ----------
@@ -123,26 +125,26 @@ Respond with JSON: {{"category": "...", "summary": "...", "sentiment": "...", "i
 
 # COMMAND ----------
 
-def call_llm_single(title, body, source, tags, api_key, model):
-    """Call the OpenAI ChatCompletion API for a single signal.
+def _build_request(provider, model, api_key, prompt):
+    """Build the URL, headers, and JSON body for each LLM provider.
 
     Args:
-        title: Signal title.
-        body: Signal body.
-        source: Data source.
-        tags: Signal tags.
-        api_key: OpenAI API key.
+        provider: Provider name ("openai", "anthropic", "gemini").
         model: Model identifier.
+        api_key: API key for the provider.
+        prompt: User prompt string.
 
     Returns:
-        Dict with category, summary, sentiment, is_emerging, or defaults on failure.
+        Tuple of (url, headers, json_body).
     """
-    prompt = build_prompt(title, body, source, tags)
+    config = LLM_PROVIDERS[provider]
+    headers = config["auth_header"](api_key)
 
-    try:
-        response = post_with_retry(
-            url="https://api.openai.com/v1/chat/completions",
-            json_body={
+    if provider == "openai":
+        return (
+            config["url"],
+            headers,
+            {
                 "model": model,
                 "messages": [
                     {"role": "system", "content": SYSTEM_PROMPT},
@@ -151,15 +153,87 @@ def call_llm_single(title, body, source, tags, api_key, model):
                 "max_tokens": LLM_CONFIG["max_tokens"],
                 "temperature": LLM_CONFIG["temperature"],
             },
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
+        )
+    elif provider == "anthropic":
+        return (
+            config["url"],
+            headers,
+            {
+                "model": model,
+                "system": SYSTEM_PROMPT,
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": LLM_CONFIG["max_tokens"],
+                "temperature": LLM_CONFIG["temperature"],
             },
+        )
+    elif provider == "gemini":
+        url = config["url"].replace("{model}", model) + f"?key={api_key}"
+        return (
+            url,
+            headers,
+            {
+                "contents": [{"parts": [{"text": f"{SYSTEM_PROMPT}\n\n{prompt}"}]}],
+                "generationConfig": {
+                    "maxOutputTokens": LLM_CONFIG["max_tokens"],
+                    "temperature": LLM_CONFIG["temperature"],
+                },
+            },
+        )
+
+
+def _extract_content(provider, result):
+    """Extract the text content from each provider's response format.
+
+    Args:
+        provider: Provider name.
+        result: Parsed JSON response.
+
+    Returns:
+        Raw text string from the LLM.
+    """
+    if provider == "openai":
+        return result["choices"][0]["message"]["content"]
+    elif provider == "anthropic":
+        return result["content"][0]["text"]
+    elif provider == "gemini":
+        return result["candidates"][0]["content"]["parts"][0]["text"]
+
+
+def call_llm_single(title, body, source, tags, api_key, model):
+    """Call the configured LLM provider for a single signal.
+
+    Supports OpenAI, Anthropic (Claude), and Google Gemini.
+
+    Args:
+        title: Signal title.
+        body: Signal body.
+        source: Data source.
+        tags: Signal tags.
+        api_key: API key for the configured provider.
+        model: Model identifier.
+
+    Returns:
+        Dict with category, summary, sentiment, is_emerging, or defaults on failure.
+    """
+    prompt = build_prompt(title, body, source, tags)
+
+    try:
+        url, headers, json_body = _build_request(PROVIDER, model, api_key, prompt)
+
+        response = post_with_retry(
+            url=url,
+            json_body=json_body,
+            headers=headers,
             timeout=60,
         )
 
         result = response.json()
-        content = result["choices"][0]["message"]["content"]
+        content = _extract_content(PROVIDER, result)
+
+        # Strip markdown code fences if present
+        content = content.strip()
+        if content.startswith("```"):
+            content = content.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
 
         # Parse the JSON response
         parsed = json.loads(content)
@@ -185,7 +259,7 @@ def call_llm_single(title, body, source, tags, api_key, model):
         logger.warning("LLM response not valid JSON: %s", exc)
         return _default_enrichment()
     except Exception as exc:
-        logger.error("LLM call failed: %s", exc)
+        logger.error("LLM call failed for %s: %s", PROVIDER, exc)
         return _default_enrichment()
 
 
@@ -276,13 +350,35 @@ if candidate_count == 0:
 
 # COMMAND ----------
 
-# -- Get API key --
+# -- Get API key for the selected provider --
+# WHY: The orchestrator stores the key in both os.environ and Spark conf.
+# We try Spark conf first (persists across notebook.run), then env var,
+# then dbutils.secrets as final fallback.
+env_key = PROVIDER_CONFIG["env_key"]
+api_key = None
+
+# Try Spark conf (set by orchestrator)
 try:
-    api_key = get_secret("OPENAI_API_KEY")
-except ValueError as exc:
-    logger.error("Cannot get OpenAI API key: %s", exc)
-    logger.info("LLM enrichment skipped — set OPENAI_API_KEY to enable")
-    dbutils.notebook.exit("SKIPPED: No API key configured")
+    api_key = spark.conf.get(f"stratum.secret.{env_key}", None)
+except Exception:
+    pass
+
+# Try environment variable
+if not api_key:
+    import os
+    api_key = os.environ.get(env_key)
+
+# Try Databricks secrets
+if not api_key:
+    try:
+        api_key = get_secret(env_key)
+    except ValueError:
+        pass
+
+if not api_key:
+    logger.error("No API key found for %s", PROVIDER)
+    logger.info("LLM enrichment skipped — set %s via widget, env var, or dbutils.secrets", env_key)
+    dbutils.notebook.exit(f"SKIPPED: No {env_key} configured")
 
 # COMMAND ----------
 

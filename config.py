@@ -88,8 +88,31 @@ RETRY_CONFIG = {
 # COMMAND ----------
 
 # -- LLM Enrichment Configuration --
+# WHY: Supporting multiple LLM providers makes the project portable and
+# demonstrates real-world design where teams may use different providers.
+LLM_PROVIDERS = {
+    "openai": {
+        "url": "https://api.openai.com/v1/chat/completions",
+        "model": "gpt-3.5-turbo",
+        "env_key": "OPENAI_API_KEY",
+        "auth_header": lambda key: {"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+    },
+    "anthropic": {
+        "url": "https://api.anthropic.com/v1/messages",
+        "model": "claude-sonnet-4-20250514",
+        "env_key": "ANTHROPIC_API_KEY",
+        "auth_header": lambda key: {"x-api-key": key, "anthropic-version": "2023-06-01", "Content-Type": "application/json"},
+    },
+    "gemini": {
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+        "model": "gemini-2.0-flash",
+        "env_key": "GEMINI_API_KEY",
+        "auth_header": lambda key: {"Content-Type": "application/json"},
+    },
+}
+
 LLM_CONFIG = {
-    "model": "gpt-3.5-turbo",
+    "provider": "anthropic",  # default provider — change to "openai" or "gemini"
     "batch_size": 20,
     "max_tokens": 256,
     "temperature": 0.3,
